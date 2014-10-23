@@ -32,9 +32,26 @@ getScore <- function(graph, score)
 }
 
 #Restart hill-climbing search with randomly generated initial graphs
-gm.restart <- function(nstart, prob, seed, data, graph.init, forward=TRUE, backward=TRUE, score="aic")
+gm.restart <- function(nstart, prob, seed, data, forward=TRUE, backward=TRUE, score="aic")
 {
-  return(0) #TODO implement
+  #make sure the best is always really high to start
+  bestScoreSoFar = 1000000000000000
+  bestModel = 0
+  
+  #Get the number of data points
+  n = length(data[,1])
+  
+  for (i in 1:nstart)
+  {
+    graph = graph.random(prob, n)
+    model = gm.search(data, graph, forward, backward, score)
+    if (bestScoreSoFar > model$score){ #model score is lower than best so far
+      bestModel = model
+      bestScoreSoFar = model$score
+    }
+  }
+  
+  return(bestModel) #TODO implement
 }
 
 #Generate a random graph with given probability that two nodes are connected
