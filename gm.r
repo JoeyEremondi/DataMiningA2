@@ -1,13 +1,47 @@
 #Perform hill-climbing local search to find the best scoring model
 gm.search = function(data, graph.init, forward=TRUE, backward=TRUE, score="aic"){
   #Set up
+  currentGraph = graph.init
+  currentScore = 10000000000000000
+  n = length(data[0,])
+  optimalFound = FALSE
   
   #loop:
+  while(!optimalFound)
+  {
+    #Find the neighbours of the current graph
+    allNeighbours = getNeighbours(currentGraph)
+    
+    
+    #Find the score for each neighbour
+    scores = 1:(length(allNeighbours))
+    for (i in 1:length(allNeighbours))
+    {
+      scores[i] = getScore(data, length(graph[,1]), allNeighbours[[i]], score)
+    }
+    
+    bestScoreIndex = which.min(scores)
+    
+    #If lowest neighbour is lower than current, then it's the new current
+    if (scores[bestScoreIndex] < currentScore)
+    {
+      currentGraph = allNeighbours[[bestScoreIndex]]
+      currentScore = scores[bestScoreIndex]
+    }
+    #Else we're done
+    else{
+      optimalFound = TRUE
+    }
+    
+    #TODO here: return model, score, trace and call
+    return(list(model = getCliques(graph),
+                score = currentScore,
+                trace = list(), #TODO fill this in
+                call = match.call()))
+    
+  }
   
-  #Find the neighbours of the current graph
-  #Find the score for each neighbour
-  #If lowest neighbour is lower than current, then it's the new current
-  #Else we're done
+  
   
   
   return(0) #TODO implement
@@ -15,18 +49,39 @@ gm.search = function(data, graph.init, forward=TRUE, backward=TRUE, score="aic")
 
 getNeighbours = function(graph)
 {
-  return (0) #TODO implement
+  print("Get neighbours")
+  n = length(graph[,1])
+  neighbours = list()
+  for (i in 1:n)
+  {
+    for (j in 1:(i-1))
+    {
+      newGraph = graph #TODO is this a copy
+      newGraph[i,j] =  !newGraph[i,j]
+      newGraph[j,i] =  !newGraph[j,i]
+      #Add the new graph to our list
+      neighbours[[length(neighbours) + 1]] <- newGraph
+    }
+  }
+  return (neighbours) #TODO implement
 }
 
-getScore <- function(graph, score)
+getScore <- function(data, n, graph, score)
 {
+  cliques = getCliques(graph)
+  print(data)
+  print("Cliques")
+  print(cliques)
+  
+  loglinResult = loglin(table(data), cliques)
+  deviance = loclinResult$lrt
   if (score == "aic")
   {
-    #TODO AIC
+    return(deviance + 2*length(cliques))
   }
   else if (score == "bic")
   {
-    #TODO BIC
+    return(deviance + log(n)*length(cliques))
   }
   return(0) #TODO implement
 }
@@ -39,7 +94,7 @@ gm.restart <- function(nstart, prob, seed, data, forward=TRUE, backward=TRUE, sc
   bestModel = 0
   
   #Get the number of data points
-  n = length(data[,1])
+  n = dim(data)[1]
   
   for (i in 1:nstart)
   {
@@ -71,6 +126,14 @@ graph.random <- function(prob, numNodes)
     }
   }
   return(m)
+}
+
+getCliques <- function(gr)
+{
+  n = dim(gr)[1]  
+  
+  
+  return(find.cliques(c(), 1:n, c(), gr, list() ) )
 }
 
 #Clique code provided for us
