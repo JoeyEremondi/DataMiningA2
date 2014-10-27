@@ -1,14 +1,29 @@
+#coronary.dat <- read.table("C:/Users/joey/Documents/GitHub/DataMiningA2/coronary.txt")
+#TODO remove
+printDebug = function(s)
+{
+  #print(s)
+}
+
 #Perform hill-climbing local search to find the best scoring model
 gm.search = function(data, graph.init, forward=TRUE, backward=TRUE, score="aic"){
   #Set up
   currentGraph = graph.init
-  currentScore = 10000000000000000
-  n = length(data[0,])
+  
+  n = length(data[1,])
+  currentScore = getScore(data, n, currentGraph, score)
+  
   optimalFound = FALSE
   
   #loop:
-  while(!optimalFound)
+  numIters = 0
+  maxIters = 100
+  while(!optimalFound & numIters < maxIters) #Help debug infinite loops
   {
+    printDebug("In search loop")
+    
+    numIters = numIters + 1
+    
     #Find the neighbours of the current graph
     allNeighbours = getNeighbours(currentGraph)
     
@@ -21,9 +36,12 @@ gm.search = function(data, graph.init, forward=TRUE, backward=TRUE, score="aic")
     }
     
     bestScoreIndex = which.min(scores)
+    printDebug("Best scores")
+    printDebug(bestScoreIndex)
+    printDebug(allNeighbours[[bestScoreIndex]])
     
     #If lowest neighbour is lower than current, then it's the new current
-    if (scores[bestScoreIndex] < currentScore)
+    if ( scores[bestScoreIndex] < currentScore)
     {
       currentGraph = allNeighbours[[bestScoreIndex]]
       currentScore = scores[bestScoreIndex]
@@ -34,7 +52,7 @@ gm.search = function(data, graph.init, forward=TRUE, backward=TRUE, score="aic")
     }
     
     #TODO here: return model, score, trace and call
-    return(list(model = getCliques(graph),
+    return(list(model = getCliques(currentGraph),
                 score = currentScore,
                 trace = list(), #TODO fill this in
                 call = match.call()))
@@ -49,8 +67,10 @@ gm.search = function(data, graph.init, forward=TRUE, backward=TRUE, score="aic")
 
 getNeighbours = function(graph)
 {
-  print("Get neighbours")
-  n = length(graph[,1])
+  printDebug("Get neighbours")
+  n = length(graph[1,])
+  printDebug("Get neighbours with size")
+  printDebug(n)
   neighbours = list()
   for (i in 1:n)
   {
@@ -60,6 +80,10 @@ getNeighbours = function(graph)
       newGraph[i,j] =  !newGraph[i,j]
       newGraph[j,i] =  !newGraph[j,i]
       #Add the new graph to our list
+      
+      printDebug("Neighbour size")
+      printDebug(length(neighbours))
+      
       neighbours[[length(neighbours) + 1]] <- newGraph
     }
   }
@@ -69,12 +93,12 @@ getNeighbours = function(graph)
 getScore <- function(data, n, graph, score)
 {
   cliques = getCliques(graph)
-  print(data)
-  print("Cliques")
-  print(cliques)
+  #printDebug(data)
+  printDebug("Cliques")
+  printDebug(cliques)
   
   loglinResult = loglin(table(data), cliques)
-  deviance = loclinResult$lrt
+  deviance = loglinResult$lrt
   if (score == "aic")
   {
     return(deviance + 2*length(cliques))
@@ -94,10 +118,11 @@ gm.restart <- function(nstart, prob, seed, data, forward=TRUE, backward=TRUE, sc
   bestModel = 0
   
   #Get the number of data points
-  n = dim(data)[1]
+  n = dim(data)[2]
   
   for (i in 1:nstart)
   {
+    printDebug("Starting new search")
     graph = graph.random(prob, n)
     model = gm.search(data, graph, forward, backward, score)
     if (bestScoreSoFar > model$score){ #model score is lower than best so far
@@ -112,6 +137,8 @@ gm.restart <- function(nstart, prob, seed, data, forward=TRUE, backward=TRUE, sc
 #Generate a random graph with given probability that two nodes are connected
 graph.random <- function(prob, numNodes)
 {
+  printDebug("Num nodes in random graph")
+  printDebug(numNodes)
   m = matrix(0,numNodes, numNodes)
   for (i in 1:numNodes)
   {
