@@ -10,15 +10,18 @@ gm.search = function(data, graph.init, forward=TRUE, backward=TRUE, score="aic")
   #Set up
   currentGraph = graph.init
   
-  n = length(data[1,])
-  currentScore = getScore(data, n, currentGraph, score)
+  numNodes = length(data[1,])
+  numObs = length(data[,1])
+  currentScore = getScore(data, numObs, currentGraph, score)
   
   optimalFound = FALSE
   
+  nextTrace = 1
+  trace = list()
+  
   #loop:
   numIters = 0
-  maxIters = 100
-  while(!optimalFound & numIters < maxIters) #Help debug infinite loops
+  while(!optimalFound) #Help debug infinite loops
   {
     printDebug("In search loop")
     
@@ -32,50 +35,76 @@ gm.search = function(data, graph.init, forward=TRUE, backward=TRUE, score="aic")
     scores = 1:(length(allNeighbours))
     for (i in 1:length(allNeighbours))
     {
-      scores[i] = getScore(data, length(graph[,1]), allNeighbours[[i]], score)
+      scores[i] = getScore(data, numObs, allNeighbours[[i]], score)
     }
     
     bestScoreIndex = which.min(scores)
-    printDebug("Best scores")
+    printDebug("All scores")
+    printDebug(scores)
     printDebug(bestScoreIndex)
     printDebug(allNeighbours[[bestScoreIndex]])
     
     #If lowest neighbour is lower than current, then it's the new current
     if ( scores[bestScoreIndex] < currentScore)
     {
+      trace[nextTrace] = differenceString(currentGraph, allNeighbours[[bestScoreIndex]], numNodes, scores[bestScoreIndex])
+      nextTrace = nextTrace + 1
+      
       currentGraph = allNeighbours[[bestScoreIndex]]
       currentScore = scores[bestScoreIndex]
+      
+      
     }
     #Else we're done
     else{
       optimalFound = TRUE
     }
     
-    #TODO here: return model, score, trace and call
-    return(list(model = getCliques(currentGraph),
-                score = currentScore,
-                trace = list(), #TODO fill this in
-                call = match.call()))
+    
     
   }
   
+  #TODO here: return model, score, trace and call
+  return(list(model = getCliques(currentGraph),
+              score = currentScore,
+              trace = trace, #TODO fill this in
+              call = match.call()))
   
   
-  
-  return(0) #TODO implement
 }
+
+differenceString <- function(originalGraph, newGraph, numNodes, score)
+{
+  for (i in 1:numNodes)
+  {
+    for (j in 1:numNodes)
+    {
+      if ((originalGraph[i,j] == 0) & (newGraph[i,j] == 1 ))
+      {
+        return(paste("Added ", i, " - ", j, "(score = ", score, ")") )
+      }
+      if (originalGraph[i,j] == 1 & newGraph[i,j] == 0)
+      {
+        return(paste("Removed ", i, " - ", j, "(score = ", score, ")") )
+      }
+    }
+  }
+}
+
 
 getNeighbours = function(graph)
 {
   printDebug("Get neighbours")
-  n = length(graph[1,])
+  numNodes = length(graph[1,])
   printDebug("Get neighbours with size")
-  printDebug(n)
+  printDebug(numNodes)
   neighbours = list()
-  for (i in 1:n)
+  for (i in 1:numNodes)
   {
     for (j in 1:(i-1))
     {
+      #TODO what about FORWARD and BACKWARD?
+      
       newGraph = graph #TODO is this a copy
       newGraph[i,j] =  !newGraph[i,j]
       newGraph[j,i] =  !newGraph[j,i]
@@ -90,29 +119,40 @@ getNeighbours = function(graph)
   return (neighbours) #TODO implement
 }
 
-getScore <- function(data, n, graph, score)
+getScore <- function(data, numObs, graph, score)
 {
   cliques = getCliques(graph)
   #printDebug(data)
-  printDebug("Cliques")
-  printDebug(cliques)
+  #printDebug("Cliques")
+  #printDebug(cliques)
   
-  loglinResult = loglin(table(data), cliques)
+  loglinResult = loglin(table(data), cliques, param=TRUE)
   deviance = loglinResult$lrt
+  
+  numParams = length(loglinResult$param) #TODO how to get num params?
+  print("Num params")
+  print(numParams)
+  
+  
   if (score == "aic")
   {
-    return(deviance + 2*length(cliques))
+    return(deviance + 2*numParams)
   }
   else if (score == "bic")
   {
-    return(deviance + log(n)*length(cliques))
+    printDebug("BIC score")
+    printDebug(numObs)
+    return(deviance + log(numObs)*numParams)
   }
-  return(0) #TODO implement
+  
 }
 
 #Restart hill-climbing search with randomly generated initial graphs
 gm.restart <- function(nstart, prob, seed, data, forward=TRUE, backward=TRUE, score="aic")
 {
+  #set our random seed
+  set.seed(seed)
+  
   #make sure the best is always really high to start
   bestScoreSoFar = 1000000000000000
   bestModel = 0
