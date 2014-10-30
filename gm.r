@@ -51,11 +51,12 @@ gm.search = function(data, graph.init, forward=TRUE, backward=TRUE, score="aic",
       #scores[i] = getScore(data, numObs, allNeighbours[[i]], score)
     #}
     bestNeighbourData = bestNeighbour(data, numObs, currentGraph, score, maxParams)
-    neighbourScore = bestNeighbourData$bestScore
-    neighbourChange = bestNeighbourData$bestPair
+    printDebug("Got best neighbour")
+    neighbourScore = bestNeighbourData[[1]]
+    neighbourChange = bestNeighbourData[[2]]
     
     #bestScoreIndex = which.min(scores)
-    #printDebug("All scores")
+    printDebug("Unpacked scores list")
     #printDebug(scores)
     #printDebug(bestScoreIndex)
     #printDebug(allNeighbours[[bestScoreIndex]])
@@ -63,6 +64,8 @@ gm.search = function(data, graph.init, forward=TRUE, backward=TRUE, score="aic",
     #If lowest neighbour is lower than current, then it's the new current
     if ( neighbourScore < currentScore)
     {
+      printDebug("Unpacking neighbour result")
+      printDebug(length(neighbourChange))
       i = neighbourChange[1]
       j = neighbourChange[2]
       added = neighbourChange[3]
@@ -72,19 +75,25 @@ gm.search = function(data, graph.init, forward=TRUE, backward=TRUE, score="aic",
         print(diffString)
       }
       
+      printDebug("About to append to trace")
+      
       trace[nextTrace] = diffString
       nextTrace = nextTrace + 1
+      printDebug("Appended to trace")
       
       #currentGraph = allNeighbours[[bestScoreIndex]]
-      currentGraph[i,j] = !currentGraph[i,j]
-      currentGraph[j,i] = !currentGraph[j,i]
+      currentGraph[i,j] = floor(1 - currentGraph[i,j])
+      currentGraph[j,i] =floor(1 - currentGraph[j,i])
       currentScore = neighbourScore
       #currentScore = scores[bestScoreIndex]
+      
+      printDebug("Reset graph in main fn")
       
       
     }
     #Else we're done
     else{
+      printDebug("Found optimal")
       optimalFound = TRUE
     }
     
@@ -104,11 +113,14 @@ gm.search = function(data, graph.init, forward=TRUE, backward=TRUE, score="aic",
 differenceString <- function(i, j, added, score)
 {
 
-      if (added == 1)
+      
+      printDebug(added)
+  
+      if (added)
       {
         return(paste("Added ", i, " - ", j, "(score = ", score, ")") )
       }
-      if (added == 0)
+      else
       {
         return(paste("Removed ", i, " - ", j, "(score = ", score, ")") )
       }
@@ -122,31 +134,41 @@ differenceString <- function(i, j, added, score)
 bestNeighbour = function(data, numObs, graph, score, maxParams)
 {
   numNodes = length(graph[1,])
-  bestScore = 1/0 #Start as positive infinity
-  bestPair = c(-1, -1)
+  bestScore = NULL
+  bestPair = c(-1, -1, -1)
   
-  for (i in 1:numNodes)
+  for (i in 2:numNodes)
   {
     for (j in 1:(i-1))
     {
       
       #Modify our graph
-      graph[i,j] =  !graph[i,j]
-      graph[j,i] =  !graph[j,i]
+      graph[i,j] =  floor(1 - graph[i,j])
+      graph[j,i] =  floor(1 - graph[j,i])
 
       graphScore = getScore(data, numObs, graph, score, maxParams)
-      if (graphScore < bestScore)
+      printDebug("Got score")
+      if ( is.null(bestScore)  || graphScore < bestScore)
       {
+        printDebug("Setting best score")
+        printDebug(i)
+        printDebug(j)
+        printDebug(graph)
+        printDebug(graph[i,j])
         bestPair = c(i,j, graph[i,j])
         bestScore = graphScore
       }
       
       #Return graph to its old state
-      graph[i,j] =  !graph[i,j]
-      graph[j,i] =  !graph[j,i]
+      graph[i,j] =  (1 - graph[i,j])
+      graph[j,i] =  (1 - graph[j,i])
+      printDebug("Put graph in old state")
     }
   }
-  return (list(bestPair=bestPair, bestScore=bestScore))
+  printDebug("Returning best score, best pair")
+  printDebug(bestScore)
+  printDebug(bestPair)
+  return (list(bestScore, bestPair))
 }
 
 # getNeighbours = function(graph)
@@ -183,26 +205,26 @@ getScore <- function(data, numObs, graph, score, maxParams)
 {
   cliques = getCliques(graph)
   
-  printDebug("Getting score of graph:")
-  printDebug(graph)
-  printDebug("Num nodes")
-  printDebug(length(graph[1,]))
+  #printDebug("Getting score of graph:")
+  #printDebug(graph)
+  #printDebug("Num nodes")
+  #printDebug(length(graph[1,]))
   
   
   
   #printDebug(data)
-  printDebug("Cliques")
-  printDebug(cliques)
+  #printDebug("Cliques")
+  #printDebug(cliques)
   
   loglinResult = loglin(table(data), cliques, print=FALSE)
 
-  printDebug("Finished loglin")
+  #printDebug("Finished loglin")
   deviance = loglinResult$lrt
   
   numParams = maxParams - loglinResult$df
   #numParams = length(loglinResult$param) #TODO how to get num params?
-  #print("Num params")
-  #print(numParams)
+  #printDebug("Num params")
+  #printDebug(numParams)
   
   
   if (score == "aic")
@@ -211,8 +233,8 @@ getScore <- function(data, numObs, graph, score, maxParams)
   }
   else if (score == "bic")
   {
-    printDebug("BIC score")
-    printDebug(numObs)
+    #printDebug("BIC score")
+    #printDebug(numObs)
     return(deviance + log(numObs)*numParams)
   }
   
@@ -225,24 +247,31 @@ gm.restart <- function(nstart, prob, seed, data, forward=TRUE, backward=TRUE, sc
   set.seed(seed)
   
   #make sure the best is always really high to start
-  bestScoreSoFar = 1000000000000000
-  bestModel = 0
+  bestScoreSoFar = NULL
+  bestModel = list()
   
   #Get the number of data points
   n = dim(data)[2]
   
-  for (i in 1:nstart)
+  for (counter in (1:nstart) )
   {
     printDebug("Starting new search")
+    printDebug(counter)
+    printDebug(nstart)
     graph = graph.random(prob, n)
     model = gm.search(data, graph, forward, backward, score)
-    if (bestScoreSoFar > model$score){ #model score is lower than best so far
+    printDebug(mode)
+    if (is.null(bestScoreSoFar) || bestScoreSoFar > model$score){ #model score is lower than best so far
+      printDebug("Updating best model in restart")
       bestModel = model
       bestScoreSoFar = model$score
+      printDebug("Did update")
     }
+    printDebug("Done one loop iteration")
   }
   
-  return(bestModel) #TODO implement
+  printDebug("Returning best model")
+  return(bestModel) 
 }
 
 #Generate a random graph with given probability that two nodes are connected
