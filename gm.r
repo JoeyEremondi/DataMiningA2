@@ -6,18 +6,31 @@ printDebug = function(s)
 }
 
 #Perform hill-climbing local search to find the best scoring model
-gm.search = function(data, graph.init, forward=TRUE, backward=TRUE, score="aic"){
+gm.search = function(data, graph.init, forward=TRUE, backward=TRUE, score="aic", doPrint=TRUE){
   #Set up
   currentGraph = graph.init
   
   numNodes = length(data[1,])
   numObs = length(data[,1])
-  currentScore = getScore(data, numObs, currentGraph, score)
+  
+  
+  #Max number of params is the df of the mutual-independence model plus the # params in that model
+  #Is fast to compute
+  indLL = loglin(table(data), getCliques(matrix(0,numNodes, numNodes)), param=TRUE)
+  maxParams = indLL$df + length(indLL$param)
+  
+  printDebug("Max params")
+  printDebug(maxParams)
+  
+  currentScore = getScore(data, numObs, currentGraph, score, maxParams)
   
   optimalFound = FALSE
   
+  
   nextTrace = 1
   trace = list()
+  
+  
   
   #loop:
   numIters = 0
@@ -28,30 +41,45 @@ gm.search = function(data, graph.init, forward=TRUE, backward=TRUE, score="aic")
     numIters = numIters + 1
     
     #Find the neighbours of the current graph
-    allNeighbours = getNeighbours(currentGraph)
+    #allNeighbours = getNeighbours(currentGraph)
     
     
     #Find the score for each neighbour
-    scores = 1:(length(allNeighbours))
-    for (i in 1:length(allNeighbours))
-    {
-      scores[i] = getScore(data, numObs, allNeighbours[[i]], score)
-    }
+    #scores = 1:(length(allNeighbours))
+    #for (i in 1:length(allNeighbours))
+    #{
+      #scores[i] = getScore(data, numObs, allNeighbours[[i]], score)
+    #}
+    bestNeighbourData = bestNeighbour(data, numObs, currentGraph, score, maxParams)
+    neighbourScore = bestNeighbourData$bestScore
+    neighbourChange = bestNeighbourData$bestPair
     
-    bestScoreIndex = which.min(scores)
-    printDebug("All scores")
-    printDebug(scores)
-    printDebug(bestScoreIndex)
-    printDebug(allNeighbours[[bestScoreIndex]])
+    #bestScoreIndex = which.min(scores)
+    #printDebug("All scores")
+    #printDebug(scores)
+    #printDebug(bestScoreIndex)
+    #printDebug(allNeighbours[[bestScoreIndex]])
     
     #If lowest neighbour is lower than current, then it's the new current
-    if ( scores[bestScoreIndex] < currentScore)
+    if ( neighbourScore < currentScore)
     {
-      trace[nextTrace] = differenceString(currentGraph, allNeighbours[[bestScoreIndex]], numNodes, scores[bestScoreIndex])
+      i = neighbourChange[1]
+      j = neighbourChange[2]
+      added = neighbourChange[3]
+      diffString = differenceString(i,j,added, neighbourScore)
+      if (doPrint)
+      {
+        print(diffString)
+      }
+      
+      trace[nextTrace] = diffString
       nextTrace = nextTrace + 1
       
-      currentGraph = allNeighbours[[bestScoreIndex]]
-      currentScore = scores[bestScoreIndex]
+      #currentGraph = allNeighbours[[bestScoreIndex]]
+      currentGraph[i,j] = !currentGraph[i,j]
+      currentGraph[j,i] = !currentGraph[j,i]
+      currentScore = neighbourScore
+      #currentScore = scores[bestScoreIndex]
       
       
     }
@@ -73,65 +101,108 @@ gm.search = function(data, graph.init, forward=TRUE, backward=TRUE, score="aic")
   
 }
 
-differenceString <- function(originalGraph, newGraph, numNodes, score)
+differenceString <- function(i, j, added, score)
 {
-  for (i in 1:numNodes)
-  {
-    for (j in 1:numNodes)
-    {
-      if ((originalGraph[i,j] == 0) & (newGraph[i,j] == 1 ))
+
+      if (added == 1)
       {
         return(paste("Added ", i, " - ", j, "(score = ", score, ")") )
       }
-      if (originalGraph[i,j] == 1 & newGraph[i,j] == 0)
+      if (added == 0)
       {
         return(paste("Removed ", i, " - ", j, "(score = ", score, ")") )
       }
-    }
-  }
+    
+  
 }
 
+#Constants for adding or removing nodes
 
-getNeighbours = function(graph)
+
+bestNeighbour = function(data, numObs, graph, score, maxParams)
 {
-  printDebug("Get neighbours")
   numNodes = length(graph[1,])
-  printDebug("Get neighbours with size")
-  printDebug(numNodes)
-  neighbours = list()
+  bestScore = 1/0 #Start as positive infinity
+  bestPair = c(-1, -1)
+  
   for (i in 1:numNodes)
   {
     for (j in 1:(i-1))
     {
-      #TODO what about FORWARD and BACKWARD?
       
-      newGraph = graph #TODO is this a copy
-      newGraph[i,j] =  !newGraph[i,j]
-      newGraph[j,i] =  !newGraph[j,i]
-      #Add the new graph to our list
+      #Modify our graph
+      graph[i,j] =  !graph[i,j]
+      graph[j,i] =  !graph[j,i]
+
+      graphScore = getScore(data, numObs, graph, score, maxParams)
+      if (graphScore < bestScore)
+      {
+        bestPair = c(i,j, graph[i,j])
+        bestScore = graphScore
+      }
       
-      printDebug("Neighbour size")
-      printDebug(length(neighbours))
-      
-      neighbours[[length(neighbours) + 1]] <- newGraph
+      #Return graph to its old state
+      graph[i,j] =  !graph[i,j]
+      graph[j,i] =  !graph[j,i]
     }
   }
-  return (neighbours) #TODO implement
+  return (list(bestPair=bestPair, bestScore=bestScore))
 }
 
-getScore <- function(data, numObs, graph, score)
+# getNeighbours = function(graph)
+# {
+#   printDebug("Get neighbours")
+#   numNodes = length(graph[1,])
+#   printDebug("Get neighbours with size")
+#   printDebug(numNodes)
+#   numNeighbours = (numNodes*(numNodes-1)/2) #Formula for sum(1..n, i-1)
+#   neighbours = matrix(-1, numNeighbours, 2)
+#   
+#   for (i in 1:numNodes)
+#   {
+#     for (j in 1:(i-1))
+#     {
+#       #TODO what about FORWARD and BACKWARD?
+#       
+#       newGraph = graph #TODO is this a copy
+#       newGraph[i,j] =  !newGraph[i,j]
+#       newGraph[j,i] =  !newGraph[j,i]
+#       #Add the new graph to our list
+#       
+#       printDebug("Neighbour size")
+#       printDebug(length(neighbours))
+#       
+#       #neighbours[[length(neighbours) + 1]] <- newGraph
+#       neighbours[]
+#     }
+#   }
+#   return (neighbours) #TODO implement
+# }
+
+getScore <- function(data, numObs, graph, score, maxParams)
 {
   cliques = getCliques(graph)
-  #printDebug(data)
-  #printDebug("Cliques")
-  #printDebug(cliques)
   
-  loglinResult = loglin(table(data), cliques, param=TRUE)
+  printDebug("Getting score of graph:")
+  printDebug(graph)
+  printDebug("Num nodes")
+  printDebug(length(graph[1,]))
+  
+  
+  
+  #printDebug(data)
+  printDebug("Cliques")
+  printDebug(cliques)
+  
+  loglinResult = loglin(table(data), cliques, print=FALSE)
+
+  printDebug("Finished loglin")
   deviance = loglinResult$lrt
   
-  numParams = length(loglinResult$param) #TODO how to get num params?
-  print("Num params")
-  print(numParams)
+  numParams = maxParams - loglinResult$df
+  #numParams = length(loglinResult$param) #TODO how to get num params?
+  #print("Num params")
+  #print(numParams)
   
   
   if (score == "aic")
