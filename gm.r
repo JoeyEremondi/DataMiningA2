@@ -14,10 +14,21 @@ gm.search = function(data, graph.init, forward=TRUE, backward=TRUE, score="aic",
   numObs = length(data[,1])
   
   
+  
+  
+  #First, find out how many values each var in this model can have
+  numValues = (1:numNodes)
+  for (i in (1:numNodes))
+  {
+    numValues[i] = length(unique(data[,i]))
+  }
+  
   #Max number of params is the df of the mutual-independence model plus the # params in that model
-  #Is fast to compute
-  indLL = loglin(table(data), getCliques(matrix(0,numNodes, numNodes)), param=TRUE)
-  maxParams = indLL$df + length(indLL$param)
+  #Number of params is d_i - 1 for each variable, plus one interept parameter
+  indLL = loglin(table(data), getCliques(matrix(0,numNodes, numNodes)))
+  #d_i - 1 parameters for each variable in the independent model
+  indParams = sum(numValues) - (numNodes) + 1
+  maxParams = indLL$df + indParams
   
   printDebug("Max params")
   printDebug(maxParams)
